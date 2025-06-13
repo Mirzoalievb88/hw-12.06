@@ -3,6 +3,7 @@ using AutoMapper;
 using Domain.ApiResponse;
 using Domain.Dtos.EditorDTO;
 using Domain.Entities;
+using Domain.Filters;
 using Infrastructure.Data;
 using Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -41,16 +42,37 @@ public class EditorService(DataContext context, IMapper mapper) : IEditorService
         return new Response<string>(default, "All Worked");
     }   
 
-    public async Task<Response<List<GetEditorDto>>> GetEditorAsync()
+    public async Task<Response<List<GetEditorDto>>> GetEditorAsync(EditorFilter filter)
     {
-        var Editor = await context.Editors.ToListAsync();
-        var result = mapper.Map<List<GetEditorDto>>(Editor);
+        var validFilter = new ValidFilter(filter.PageNumber, filter.PageSize);
 
-        if (result == null)
+        var query = context.Editors.AsQueryable();
+
+        if (!string.IsNullOrEmpty(filter.Title))
         {
-            return new Response<List<GetEditorDto>>("Result is null", HttpStatusCode.NotFound);
+            query = query.Where(e => e.FirstName.ToLower().Trim().Contains(filter.Title.ToLower().Trim()));
         }
-        return new Response<List<GetEditorDto>>(result, "All Worked");
+
+        if (filter.MinPrice != null)
+        {
+            query = query.Where(e => e.Salary >= filter.MinPrice);
+        }
+
+        if (filter.MaxPrice != null)
+        {
+            query = query.Where(e => e.Salary <= filter.MaxPrice);
+        }
+
+        var totalRecords = await query.CountAsync();
+
+        var paged = await query
+            .Skip((validFilter.PageNumber - 1) * validFilter.PageSize)
+            .Take(validFilter.PageSize)
+            .ToListAsync();
+
+        var mapped = mapper.Map<List<GetEditorDto>>(paged);
+
+        return new PagedResponse<List<GetEditorDto>>(mapped, totalRecords, validFilter.PageNumber, validFilter.PageSize);
     }
 
     public async Task<Response<string>> UpdateEditorAsync(int id, UpdateEditorDto update)

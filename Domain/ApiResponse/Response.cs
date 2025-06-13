@@ -4,6 +4,10 @@ namespace Domain.ApiResponse;
 
 public class Response<T>
 {
+    private T? data;
+    private string message;
+    private T? data1;
+
     public bool IsSuccesed { get; set; }
     public T Data { get; set; }
     public string Massege { get; set; }

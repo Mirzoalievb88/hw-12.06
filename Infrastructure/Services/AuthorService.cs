@@ -2,6 +2,7 @@ using System.Net;
 using AutoMapper;
 using Domain.ApiResponse;
 using Domain.Dtos.AuthorDTO;
+using Domain.Filters;
 using Infrastructure.Data;
 using Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -40,16 +41,31 @@ public class AuthorService(DataContext context, IMapper mapper) : IAuthorService
         return new Response<string>(default, "All Worked");
     }   
 
-    public async Task<Response<List<GetAuthorDto>>> GetAuthorAsync()
+    public async Task<PagedResponse<List<GetAuthorDto>>> GetAuthorAsync(AuthorFilter filter)
     {
-        var author = await context.Authors.ToListAsync();
-        var result = mapper.Map<List<GetAuthorDto>>(author);
+        var validFilter = new ValidFilter(filter.PageNumber, filter.PageSize);
+        var query = context.Authors.AsQueryable();
 
-        if (result == null)
+        if (!string.IsNullOrEmpty(filter.Title))
         {
-            return new Response<List<GetAuthorDto>>("Result is null", HttpStatusCode.NotFound);
+            query = query.Where(c => c.FirstName.ToLower().Trim().Contains(filter.Title.ToLower().Trim()));
         }
-        return new Response<List<GetAuthorDto>>(result, "All Worked");
+
+        var totalRecords = await query.CountAsync();
+
+        var paged = await query
+            .Skip((validFilter.PageNumber - 1) * validFilter.PageSize)
+            .Take(validFilter.PageSize)
+            .ToListAsync();
+
+        var mapped = mapper.Map<List<GetAuthorDto>>(paged);
+
+        return new PagedResponse<List<GetAuthorDto>>(mapped, totalRecords, validFilter.PageNumber, validFilter.PageSize);
+    }
+
+    public Task<Response<List<GetAuthorDto>>> GetAuthorAsync()
+    {
+        throw new NotImplementedException();
     }
 
     public async Task<Response<string>> UpdateAuthorAsync(int id, UpdateAuthorDto update)

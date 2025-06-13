@@ -3,6 +3,7 @@ using AutoMapper;
 using Domain.ApiResponse;
 using Domain.Dtos.BookDTO;
 using Domain.Entities;
+using Domain.Filters;
 using Infrastructure.Data;
 using Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -41,16 +42,38 @@ public class BookService(DataContext context, IMapper mapper) : IBookService
         return new Response<string>(default, "All Worked");
     }   
 
-    public async Task<Response<List<GetBookDto>>> GetBookAsync()
+    public async Task<Response<List<GetBookDto>>> GetBookAsync(BookFilter filter)
     {
-        var book = await context.Books.ToListAsync();
-        var result = mapper.Map<List<GetBookDto>>(book);
+        var validFilter = new ValidFilter(filter.PageNumber, filter.PageSize);
 
-        if (result == null)
+        var query = context.Books.AsQueryable();
+
+        if (!string.IsNullOrEmpty(filter.Title))
         {
-            return new Response<List<GetBookDto>>("Result is null", HttpStatusCode.NotFound);
+            query = query.Where(b => b.Title.ToLower().Trim().Contains(filter.Title.ToLower().Trim()));
         }
-        return new Response<List<GetBookDto>>(result, "All Worked");
+
+        if (filter.MinPrice != null)
+        {
+            query = query.Where(b => b.Price >= filter.MinPrice);
+        }
+
+        if (filter.MaxPrice != null)
+        {
+            query = query.Where(b => b.Price <= filter.MaxPrice);
+        }
+
+        var totalRecords = await query.CountAsync();
+
+        var paged = await query
+            .Skip((validFilter.PageNumber - 1) * validFilter.PageSize)
+            .Take(validFilter.PageSize)
+            .ToListAsync();
+
+        var mapped = mapper.Map<List<GetBookDto>>(paged);
+
+
+        return new PagedResponse<List<GetBookDto>>(mapped, totalRecords, validFilter.PageNumber, validFilter.PageSize);
     }
 
     public async Task<Response<string>> UpdateBookAsync(int id, UpdateBookDto update)
